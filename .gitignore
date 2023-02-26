@@ -1,12 +1,13 @@
 !demo1.cpp
-!**/*.hpp
-!**/*.h
 demo1.*
 x64/
 models/
 medias/
 bin/
-3rdparty/
+3rdparty/*/bin/
+3rdparty/*/lib/
+3rdparty/**/*.txt
+**/*.zip
 .vs/
 .vscode/
 .idea/
