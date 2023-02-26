@@ -1,0 +1,10 @@
+!demo1.cpp
+demo1.*
+x64/
+models/
+medias/
+bin/
+3rdparty/
+.vs/
+.vscode/
+.idea/
