@@ -1,6 +1,6 @@
 !demo1.cpp
-!3rdparty/**/*.hpp
-!3rdparty/**/*.h
+!**/*.hpp
+!**/*.h
 demo1.*
 x64/
 models/
