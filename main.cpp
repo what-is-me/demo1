@@ -5,9 +5,12 @@
 #include <openpose/flags.hpp>
 // OpenPose dependencies
 #include <openpose/headers.hpp>
+
 #include "2Dalgorithm.hpp"
+#include "Configure.hpp"
 #include "Object.hpp"
 #include "PrintUtil.hpp"
+#include "exception.hpp"
 #include "tags.hpp"
 #include "utils.hpp"
 // Custom OpenPose flags
@@ -77,28 +80,53 @@ class Processer {
     opWrapper->start();
   }
   void personPoseImage(const cv::Mat& cvImageToProcess) {
-    const op::Matrix imageToProcess = OP_CV2OPCONSTMAT(cvImageToProcess);
-    auto datumProcessed = opWrapper->emplaceAndPop(imageToProcess);
-    if (datumProcessed != nullptr) {
-      // printKeypoints(datumProcessed);
-      std::map<std::string, cv::Point> person = bestPerson(datumProcessed);
-      if (person.empty())
-        std::cerr << "Person Undetected." << std::endl;
-      cv::Point neck = person["Neck"];
-      cv::Point hip = person.count("MidHip")
-                          ? person["MidHip"]
-                          : center(person["LHip"], person["RHip"]);
-      // std::cout << neck << " " << hip << std::endl;
-      if (neck == ZERO || hip == ZERO) {
-        std::cerr << "The person not intact." << std::endl;
-        display(cvImageToProcess);
-        return;
-      }
-      std::cout << "angle:" << angle(Line(neck, hip)) << std::endl;
-      if (!FLAGS_no_display)
-        display(cvImageToProcess, {hip, neck}, {Line(hip, neck)});
-    } else
-      op::opLog("Image could not be processed.", op::Priority::High);
+    try {
+      const op::Matrix imageToProcess = OP_CV2OPCONSTMAT(cvImageToProcess);
+      auto datumProcessed = opWrapper->emplaceAndPop(imageToProcess);
+      if (datumProcessed != nullptr) {
+        // printKeypoints(datumProcessed);
+        std::map<std::string, cv::Point> person = bestPerson(datumProcessed);
+        /* process the person */
+        if (person.empty()) {
+          throw Exception("Person Undetected.");
+        }
+        /* points we need */
+        cv::Point neck = person["Neck"];
+        cv::Point hip = person.count("MidHip")
+                            ? person["MidHip"]
+                            : center(person["LHip"], person["RHip"]);
+        cv::Point Lknee = person["LKnee"];
+        cv::Point Rknee = person["RKnee"];
+
+        if (hip == ZERO || neck == ZERO || Lknee == ZERO || Rknee == ZERO) {
+          throw Exception("The person not intact.");
+        }
+
+        float angle_body = fabs(angle(Line(neck, hip)));
+        float angle_left_leg = fabs(angle(Lknee, hip, neck));
+        float angle_right_leg = fabs(angle(Rknee, hip, neck));
+        float angle_legs = fabs(angle(Lknee, hip, Rknee));
+        float angle_front_leg = std::min(angle_left_leg, angle_right_leg);
+
+        op::opLog("body angle: " + std::to_string(angle_body),
+                  op::Priority::High);
+        op::opLog("angle between body and front leg: " +
+                      std::to_string(angle_front_leg),
+                  op::Priority::High);
+        op::opLog("angle between legs: " + std::to_string(angle_legs),
+                  op::Priority::High);
+
+        /* display the person */
+        if (!FLAGS_no_display)
+          display(cvImageToProcess, {hip, neck, Lknee, Rknee},
+                  {Line(hip, neck), Line(hip, Lknee), Line(hip, Rknee)});
+      } else
+        op::opLog("Image could not be processed.", op::Priority::High);
+    } catch (const Warning& e) {
+    } catch (const std::exception& e) {
+      display(cvImageToProcess);
+      op::opLog(e.what(), op::Priority::High);
+    }
   }
   ~Processer() { delete opWrapper; }
 };
@@ -113,16 +141,17 @@ int main(int argc, char* argv[]) {
 
     Processer processer;
 
-    cv::VideoCapture cap;  // 声明相机捕获对象
+    cv::VideoCapture cap;
     cap.set(cv::CAP_PROP_FOURCC, cv::VideoWriter::fourcc('M', 'J', 'P', 'G'));
-    cap.set(cv::CAP_PROP_FRAME_WIDTH, 640);  // 图像的宽，需要相机支持此宽
-    cap.set(cv::CAP_PROP_FRAME_HEIGHT, 480);  // 图像的高，需要相机支持此高
-    if (argc > 1)
+    cap.set(cv::CAP_PROP_FRAME_WIDTH, 640);
+    cap.set(cv::CAP_PROP_FRAME_HEIGHT, 480);
+    /* if (argc > 1)
       cap.open(std::string(
-          argv[1]));  //"E:/VScode-projects/SchoolProject/demo1/medias/running.mp4"
-    else
-      cap.open(0);
-    if (!cap.isOpened())  // 判断相机是否打开
+          argv[1]));
+    //"E:/VScode-projects/SchoolProject/demo1/medias/running.mp4" else
+      cap.open(0);*/
+    cap.open("medias/running.mp4");
+    if (!cap.isOpened())  // 锟叫讹拷锟斤拷锟斤拷欠锟斤拷
     {
       std::cerr << "ERROR!!Unable to open camera\n";
       return -2;
@@ -140,14 +169,15 @@ int main(int argc, char* argv[]) {
       // op::printTime(opTimer,
       //            "OpenPose demo successfully finished. Total time: ",
       //            " seconds.", op::Priority::High);
-      int key = cv::waitKey(10);  // 等待10ms
+      int key = cv::waitKey(0);  // wait 10 ms
       if (key == int('q')) {
-        break;  // 按下q退出
+        break;  // pause q and exit
       }
     }
     // system("pause");
-    cap.release();            // 释放相机捕获对象
-    cv::destroyAllWindows();  // 关闭所有窗口
+    /* release the source */
+    cap.release();
+    cv::destroyAllWindows();
 
     return 0;
   } catch (const std::exception&) {
